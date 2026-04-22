@@ -22,6 +22,7 @@ import {
   ArrowRightToLine,
   Columns2,
   Copy,
+  Pencil,
   RotateCw,
   Rows2,
   SquarePen,
@@ -85,6 +86,8 @@ function TabContextMenuItem({
         return <ArrowRightToLine size={16} color={iconColor} />;
       case "copy-x":
         return <CopyX size={16} color={iconColor} />;
+      case "pencil":
+        return <Pencil size={16} color={iconColor} />;
       case "x":
         return <X size={16} color={iconColor} />;
       default:
@@ -134,6 +137,7 @@ interface WorkspaceDesktopTabsRowProps {
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
   onReloadAgent: (agentId: string) => Promise<void> | void;
+  onRenameTab: (tab: WorkspaceTabDescriptor) => void;
   onCloseTabsToLeft: (tabId: string) => Promise<void> | void;
   onCloseTabsToRight: (tabId: string) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
@@ -458,6 +462,7 @@ export function WorkspaceDesktopTabsRow({
   onCopyResumeCommand,
   onCopyAgentId,
   onReloadAgent,
+  onRenameTab,
   onCloseTabsToLeft,
   onCloseTabsToRight,
   onCloseOtherTabs,
@@ -585,6 +590,7 @@ export function WorkspaceDesktopTabsRow({
           onCopyResumeCommand={onCopyResumeCommand}
           onCopyAgentId={onCopyAgentId}
           onReloadAgent={onReloadAgent}
+          onRenameTab={onRenameTab}
           onCloseTabsToLeft={onCloseTabsToLeft}
           onCloseTabsToRight={onCloseTabsToRight}
           onCloseOtherTabs={onCloseOtherTabs}
@@ -616,6 +622,7 @@ export function WorkspaceDesktopTabsRow({
       onCopyResumeCommand,
       onNavigateTab,
       onReloadAgent,
+      onRenameTab,
       setHoveredCloseTabKey,
       setHoveredTabKey,
       tabDropPreviewIndex,
@@ -759,6 +766,7 @@ function ResolvedDesktopTabChip({
   onCopyResumeCommand,
   onCopyAgentId,
   onReloadAgent,
+  onRenameTab,
   onCloseTabsToLeft,
   onCloseTabsToRight,
   onCloseOtherTabs,
@@ -783,6 +791,7 @@ function ResolvedDesktopTabChip({
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
   onReloadAgent: (agentId: string) => Promise<void> | void;
+  onRenameTab: (tab: WorkspaceTabDescriptor) => void;
   onCloseTabsToLeft: (tabId: string) => Promise<void> | void;
   onCloseTabsToRight: (tabId: string) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
@@ -806,6 +815,7 @@ function ResolvedDesktopTabChip({
         onCopyResumeCommand,
         onCopyAgentId,
         onReloadAgent,
+        onRenameTab,
         onCloseTab,
         onCloseTabsToLeft,
         onCloseTabsToRight,
@@ -821,6 +831,7 @@ function ResolvedDesktopTabChip({
       onCopyAgentId,
       onCopyResumeCommand,
       onReloadAgent,
+      onRenameTab,
       tabCount,
     ],
   );

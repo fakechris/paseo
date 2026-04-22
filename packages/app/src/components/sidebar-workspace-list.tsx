@@ -11,7 +11,10 @@ import {
   type PressableStateCallbackType,
 } from "react-native";
 import * as Haptics from "expo-haptics";
-import { useQueries } from "@tanstack/react-query";
+import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
+import { slugify, validateBranchSlug, MAX_SLUG_LENGTH } from "@server/utils/branch-slug";
+import { RenameModal } from "@/components/rename-modal";
+import { invalidateCheckoutGitQueriesForClient } from "@/stores/checkout-git-actions-store";
 import {
   useCallback,
   useMemo,
@@ -42,6 +45,7 @@ import {
   SquareTerminal,
   Monitor,
   MoreVertical,
+  Pencil,
   Plus,
   Trash2,
 } from "lucide-react-native";
@@ -194,6 +198,7 @@ interface WorkspaceRowInnerProps {
   onArchive?: () => void;
   onCopyBranchName?: () => void;
   onCopyPath?: () => void;
+  onRename?: () => void;
   archiveShortcutKeys?: ShortcutKey[][] | null;
 }
 
@@ -610,6 +615,7 @@ function WorkspaceRowRightGroup({
   onArchive,
   onCopyBranchName,
   onCopyPath,
+  onRename,
 }: {
   workspace: SidebarWorkspaceEntry;
   isHovered: boolean;
@@ -627,6 +633,7 @@ function WorkspaceRowRightGroup({
   onArchive?: () => void;
   onCopyBranchName?: () => void;
   onCopyPath?: () => void;
+  onRename?: () => void;
 }) {
   const showKebab = Boolean(onArchive && (isHovered || isTouchPlatform));
   return (
@@ -647,6 +654,7 @@ function WorkspaceRowRightGroup({
           theme={theme}
           onCopyPath={onCopyPath}
           onCopyBranchName={onCopyBranchName}
+          onRename={onRename}
           onArchive={onArchive}
           archiveLabel={archiveLabel}
           archiveStatus={archiveStatus}
@@ -686,6 +694,7 @@ function WorkspaceKebabMenu({
   theme,
   onCopyPath,
   onCopyBranchName,
+  onRename,
   onArchive,
   archiveLabel,
   archiveStatus,
@@ -696,6 +705,7 @@ function WorkspaceKebabMenu({
   theme: ReturnType<typeof useUnistyles>["theme"];
   onCopyPath?: () => void;
   onCopyBranchName?: () => void;
+  onRename?: () => void;
   onArchive: () => void;
   archiveLabel?: string;
   archiveStatus?: "idle" | "pending" | "success";
@@ -704,6 +714,10 @@ function WorkspaceKebabMenu({
 }) {
   const copyLeadingIcon = useMemo(
     () => <Copy size={14} color={theme.colors.foregroundMuted} />,
+    [theme.colors.foregroundMuted],
+  );
+  const renameLeadingIcon = useMemo(
+    () => <Pencil size={14} color={theme.colors.foregroundMuted} />,
     [theme.colors.foregroundMuted],
   );
   const archiveLeadingIcon = useMemo(
@@ -752,6 +766,15 @@ function WorkspaceKebabMenu({
             onSelect={onCopyBranchName}
           >
             Copy branch name
+          </DropdownMenuItem>
+        ) : null}
+        {onRename ? (
+          <DropdownMenuItem
+            testID={`sidebar-workspace-menu-rename-${workspaceKey}`}
+            leading={renameLeadingIcon}
+            onSelect={onRename}
+          >
+            Rename workspace
           </DropdownMenuItem>
         ) : null}
         <DropdownMenuItem
@@ -1329,6 +1352,7 @@ function WorkspaceRowInner({
   onArchive,
   onCopyBranchName,
   onCopyPath,
+  onRename,
   archiveShortcutKeys,
 }: WorkspaceRowInnerProps) {
   const { theme } = useUnistyles();
@@ -1435,6 +1459,7 @@ function WorkspaceRowInner({
               onArchive={onArchive}
               onCopyBranchName={onCopyBranchName}
               onCopyPath={onCopyPath}
+              onRename={onRename}
             />
           </View>
           {prHint ? (
@@ -1474,7 +1499,9 @@ function WorkspaceRowWithMenu({
 }) {
   const toast = useToast();
   const archiveWorktree = useCheckoutGitActionsStore((state) => state.archiveWorktree);
+  const queryClient = useQueryClient();
   const [isArchivingWorkspace, setIsArchivingWorkspace] = useState(false);
+  const [isRenameOpen, setIsRenameOpen] = useState(false);
   const workspaceDirectory = resolveWorkspaceExecutionDirectory({
     workspaceDirectory: workspace.workspaceDirectory,
   });
@@ -1619,6 +1646,50 @@ function WorkspaceRowWithMenu({
     toast.copied("Branch name copied");
   }, [toast, workspace.name]);
 
+  const renameMutation = useMutation({
+    mutationFn: async (branch: string) => {
+      const client = getHostRuntimeStore().getClient(workspace.serverId);
+      if (!client) {
+        throw new Error("Host is not connected");
+      }
+      const targetCwd = requireWorkspaceExecutionDirectory({
+        workspaceId: workspace.workspaceId,
+        workspaceDirectory: workspace.workspaceDirectory,
+      });
+      const payload = await client.renameBranch({ cwd: targetCwd, branch });
+      if (!payload.success || payload.error) {
+        throw new Error(payload.error?.message ?? "Failed to rename branch");
+      }
+      return { targetCwd, branch: payload.currentBranch ?? branch };
+    },
+    onSuccess: async ({ targetCwd }) => {
+      await invalidateCheckoutGitQueriesForClient(queryClient, {
+        serverId: workspace.serverId,
+        cwd: targetCwd,
+      });
+    },
+  });
+
+  const handleOpenRename = useCallback(() => {
+    setIsRenameOpen(true);
+  }, []);
+
+  const handleCloseRename = useCallback(() => {
+    setIsRenameOpen(false);
+  }, []);
+
+  const handleSubmitRename = useCallback(
+    async (value: string) => {
+      await renameMutation.mutateAsync(value);
+    },
+    [renameMutation],
+  );
+
+  const validateRenameSlug = useCallback((value: string): string | null => {
+    const result = validateBranchSlug(value);
+    return result.valid ? null : (result.error ?? "Invalid branch name");
+  }, []);
+
   const archiveShortcutKeys = useShortcutKeys("archive-worktree");
 
   useKeyboardActionHandler({
@@ -1637,26 +1708,42 @@ function WorkspaceRowWithMenu({
   });
 
   return (
-    <WorkspaceRowInner
-      workspace={workspace}
-      selected={selected}
-      shortcutNumber={shortcutNumber}
-      showShortcutBadge={showShortcutBadge}
-      onPress={onPress}
-      drag={drag}
-      isDragging={isDragging}
-      isArchiving={isArchiving}
-      isCreating={isCreating}
-      dragHandleProps={dragHandleProps}
-      menuController={null}
-      archiveLabel={isWorktree ? "Archive worktree" : "Hide from sidebar"}
-      archiveStatus={getWorkspaceArchiveStatus(isWorktree, archiveStatus, isArchivingWorkspace)}
-      archivePendingLabel={isWorktree ? "Archiving..." : "Hiding..."}
-      onArchive={isWorktree ? handleArchiveWorktree : handleArchiveWorkspace}
-      onCopyBranchName={canCopyBranchName ? handleCopyBranchName : undefined}
-      onCopyPath={handleCopyPath}
-      archiveShortcutKeys={selected ? archiveShortcutKeys : null}
-    />
+    <>
+      <WorkspaceRowInner
+        workspace={workspace}
+        selected={selected}
+        shortcutNumber={shortcutNumber}
+        showShortcutBadge={showShortcutBadge}
+        onPress={onPress}
+        drag={drag}
+        isDragging={isDragging}
+        isArchiving={isArchiving}
+        isCreating={isCreating}
+        dragHandleProps={dragHandleProps}
+        menuController={null}
+        archiveLabel={isWorktree ? "Archive worktree" : "Hide from sidebar"}
+        archiveStatus={getWorkspaceArchiveStatus(isWorktree, archiveStatus, isArchivingWorkspace)}
+        archivePendingLabel={isWorktree ? "Archiving..." : "Hiding..."}
+        onArchive={isWorktree ? handleArchiveWorktree : handleArchiveWorkspace}
+        onCopyBranchName={canCopyBranchName ? handleCopyBranchName : undefined}
+        onCopyPath={handleCopyPath}
+        onRename={canCopyBranchName ? handleOpenRename : undefined}
+        archiveShortcutKeys={selected ? archiveShortcutKeys : null}
+      />
+      <RenameModal
+        visible={isRenameOpen}
+        title="Rename workspace"
+        initialValue={workspace.name}
+        placeholder="branch-name"
+        submitLabel="Rename"
+        transform={slugify}
+        validate={validateRenameSlug}
+        maxLength={MAX_SLUG_LENGTH}
+        onClose={handleCloseRename}
+        onSubmit={handleSubmitRename}
+        testID={`sidebar-workspace-rename-modal-${workspace.workspaceKey}`}
+      />
+    </>
   );
 }
 

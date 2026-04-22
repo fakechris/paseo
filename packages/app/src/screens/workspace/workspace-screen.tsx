@@ -14,6 +14,7 @@ import {
   Ellipsis,
   EllipsisVertical,
   PanelRight,
+  Pencil,
   RotateCw,
   Settings,
   SquarePen,
@@ -40,6 +41,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ExplorerSidebar } from "@/components/explorer-sidebar";
+import { RenameModal } from "@/components/rename-modal";
 import { SplitContainer } from "@/components/split-container";
 import { SourceControlPanelIcon } from "@/components/icons/source-control-panel-icon";
 import { WorkspaceGitActions } from "@/screens/workspace/workspace-git-actions";
@@ -205,6 +207,7 @@ interface MobileWorkspaceTabSwitcherProps {
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
   onReloadAgent: (agentId: string) => Promise<void> | void;
+  onRenameTab: (tab: WorkspaceTabDescriptor) => void;
   onCloseTab: (tabId: string) => Promise<void> | void;
   onCloseTabsAbove: (tabId: string) => Promise<void> | void;
   onCloseTabsBelow: (tabId: string) => Promise<void> | void;
@@ -350,6 +353,8 @@ function MobileTabDropdownMenuItem({
         return <ArrowRightToLine size={16} color={iconColor} />;
       case "copy-x":
         return <CopyX size={16} color={iconColor} />;
+      case "pencil":
+        return <Pencil size={16} color={iconColor} />;
       case "x":
         return <X size={16} color={iconColor} />;
       default:
@@ -387,6 +392,7 @@ function MobileWorkspaceTabOption({
   onCopyResumeCommand,
   onCopyAgentId,
   onReloadAgent,
+  onRenameTab,
   onCloseTab,
   onCloseTabsAbove,
   onCloseTabsBelow,
@@ -403,6 +409,7 @@ function MobileWorkspaceTabOption({
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
   onReloadAgent: (agentId: string) => Promise<void> | void;
+  onRenameTab: (tab: WorkspaceTabDescriptor) => void;
   onCloseTab: (tabId: string) => Promise<void> | void;
   onCloseTabsAbove: (tabId: string) => Promise<void> | void;
   onCloseTabsBelow: (tabId: string) => Promise<void> | void;
@@ -419,6 +426,7 @@ function MobileWorkspaceTabOption({
     onCopyResumeCommand,
     onCopyAgentId,
     onReloadAgent,
+    onRenameTab,
     onCloseTab,
     onCloseTabsBefore: onCloseTabsAbove,
     onCloseTabsAfter: onCloseTabsBelow,
@@ -478,6 +486,7 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
   onCopyResumeCommand,
   onCopyAgentId,
   onReloadAgent,
+  onRenameTab,
   onCloseTab,
   onCloseTabsAbove,
   onCloseTabsBelow,
@@ -532,6 +541,7 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
           onCopyResumeCommand={onCopyResumeCommand}
           onCopyAgentId={onCopyAgentId}
           onReloadAgent={onReloadAgent}
+          onRenameTab={onRenameTab}
           onCloseTab={onCloseTab}
           onCloseTabsAbove={onCloseTabsAbove}
           onCloseTabsBelow={onCloseTabsBelow}
@@ -548,6 +558,7 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
       onCopyResumeCommand,
       onCopyAgentId,
       onReloadAgent,
+      onRenameTab,
       onCloseTab,
       onCloseTabsAbove,
       onCloseTabsBelow,
@@ -1859,6 +1870,11 @@ function WorkspaceScreenContent({
 
   const [_hoveredTabKey, setHoveredTabKey] = useState<string | null>(null);
   const [hoveredCloseTabKey, setHoveredCloseTabKey] = useState<string | null>(null);
+  const [renamingTab, setRenamingTab] = useState<{
+    kind: "terminal" | "agent";
+    id: string;
+    currentTitle: string;
+  } | null>(null);
 
   const tabByKey = useMemo(() => {
     const map = new Map<string, WorkspaceTabDescriptor>();
@@ -2123,6 +2139,60 @@ function WorkspaceScreenContent({
     },
     [client, isConnected, toast],
   );
+
+  const handleRenameTab = useCallback(
+    (tab: WorkspaceTabDescriptor) => {
+      if (tab.target.kind === "terminal") {
+        const { terminalId } = tab.target;
+        const terminal =
+          terminalsQuery.data?.terminals.find((entry) => entry.id === terminalId) ?? null;
+        const currentTitle = terminal?.title ?? terminal?.name ?? "";
+        setRenamingTab({ kind: "terminal", id: terminalId, currentTitle });
+        return;
+      }
+      if (tab.target.kind === "agent") {
+        const { agentId } = tab.target;
+        const agent =
+          useSessionStore.getState().sessions[normalizedServerId]?.agents?.get(agentId) ?? null;
+        const currentTitle = agent?.title ?? "";
+        setRenamingTab({ kind: "agent", id: agentId, currentTitle });
+      }
+    },
+    [normalizedServerId, terminalsQuery.data],
+  );
+
+  const handleRenameModalSubmit = useCallback(
+    async (nextTitle: string) => {
+      if (!renamingTab) return;
+      if (!client) {
+        throw new Error("Host is not connected");
+      }
+      const trimmed = nextTitle.trim();
+      if (renamingTab.kind === "terminal") {
+        const result = await client.renameTerminal({
+          terminalId: renamingTab.id,
+          title: trimmed,
+        });
+        if (!result.success) {
+          throw new Error(result.error ?? "Failed to rename terminal");
+        }
+        void queryClient.invalidateQueries({ queryKey: terminalsQueryKey });
+        return;
+      }
+      await client.updateAgent(renamingTab.id, { name: trimmed });
+      void queryClient.invalidateQueries({
+        queryKey: ["sidebarAgentsList", normalizedServerId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["allAgents", normalizedServerId],
+      });
+    },
+    [client, normalizedServerId, queryClient, renamingTab, terminalsQueryKey],
+  );
+
+  const handleRenameModalClose = useCallback(() => {
+    setRenamingTab(null);
+  }, []);
 
   const handleCopyWorkspacePath = useCallback(async () => {
     if (!workspaceDirectory) {
@@ -2862,6 +2932,7 @@ function WorkspaceScreenContent({
         onCopyResumeCommand={handleCopyResumeCommand}
         onCopyAgentId={handleCopyAgentId}
         onReloadAgent={handleReloadAgent}
+        onRenameTab={handleRenameTab}
         onCloseTabsToLeft={handleCloseTabsToLeftInPane}
         onCloseTabsToRight={handleCloseTabsToRightInPane}
         onCloseOtherTabs={handleCloseOtherTabsInPane}
@@ -2894,6 +2965,7 @@ function WorkspaceScreenContent({
     handleCopyResumeCommand,
     handleCopyAgentId,
     handleReloadAgent,
+    handleRenameTab,
     handleCloseTabsToLeftInPane,
     handleCloseTabsToRightInPane,
     handleCloseOtherTabsInPane,
@@ -2974,6 +3046,7 @@ function WorkspaceScreenContent({
               onCopyResumeCommand={handleCopyResumeCommand}
               onCopyAgentId={handleCopyAgentId}
               onReloadAgent={handleReloadAgent}
+              onRenameTab={handleRenameTab}
               onCloseTab={handleCloseTabById}
               onCloseTabsAbove={handleCloseTabsToLeft}
               onCloseTabsBelow={handleCloseTabsToRight}
@@ -2995,6 +3068,7 @@ function WorkspaceScreenContent({
               onCopyResumeCommand={handleCopyResumeCommand}
               onCopyAgentId={handleCopyAgentId}
               onReloadAgent={handleReloadAgent}
+              onRenameTab={handleRenameTab}
               onCloseTabsToLeft={handleCloseTabsToLeft}
               onCloseTabsToRight={handleCloseTabsToRight}
               onCloseOtherTabs={handleCloseOtherTabs}
@@ -3030,6 +3104,20 @@ function WorkspaceScreenContent({
           />
         ) : null}
       </View>
+      <RenameModal
+        visible={renamingTab !== null}
+        title={renamingTab?.kind === "terminal" ? "Rename terminal" : "Rename agent"}
+        initialValue={renamingTab?.currentTitle ?? ""}
+        submitLabel="Rename"
+        maxLength={200}
+        onClose={handleRenameModalClose}
+        onSubmit={handleRenameModalSubmit}
+        testID={
+          renamingTab
+            ? `workspace-tab-rename-modal-${renamingTab.kind}-${renamingTab.id}`
+            : undefined
+        }
+      />
     </View>
   );
 }
