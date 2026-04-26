@@ -63,6 +63,7 @@ const MutableDaemonProviderModelSchema = z
 const MutableDaemonProviderConfigSchema = z
   .object({
     enabled: z.boolean().optional(),
+    defaultModeId: z.string().min(1).nullable().optional(),
     additionalModels: z.array(MutableDaemonProviderModelSchema).optional(),
   })
   .passthrough();

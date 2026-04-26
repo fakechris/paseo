@@ -326,6 +326,33 @@ test("normalizeConfig injects the provider default model when omitted", async ()
   expect(snapshot.config.modeId).toBe("auto");
 });
 
+test("normalizeConfig uses configured provider default mode when present", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
+  const storagePath = join(workdir, "agents");
+  const storage = new AgentStorage(storagePath, logger);
+  const manager = new AgentManager({
+    clients: {
+      codex: new TestAgentClient(),
+    },
+    providerDefinitions: {
+      codex: {
+        enabled: true,
+        defaultModeId: "full-access",
+      },
+    },
+    registry: storage,
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-00000000010a",
+  });
+
+  const snapshot = await manager.createAgent({
+    provider: "codex",
+    cwd: workdir,
+  });
+
+  expect(snapshot.config.modeId).toBe("full-access");
+});
+
 test("normalizeConfig strips legacy 'default' model id", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
   const storagePath = join(workdir, "agents");

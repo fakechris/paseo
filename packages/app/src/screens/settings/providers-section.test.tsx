@@ -196,6 +196,20 @@ const disabledCodexEntry: ProviderSnapshotEntry = {
   modes: [],
 };
 
+const codexEntry: ProviderSnapshotEntry = {
+  provider: "codex",
+  status: "ready",
+  enabled: true,
+  label: "Codex",
+  description: "OpenAI Codex",
+  defaultModeId: "auto",
+  modes: [
+    { id: "auto", label: "Default Permissions" },
+    { id: "full-access", label: "Full Access" },
+  ],
+  models: [{ provider: "codex", id: "gpt-5.4", label: "GPT-5.4" }],
+};
+
 function makeConfig(providers: MutableDaemonConfig["providers"] = {}): MutableDaemonConfig {
   return { mcp: { injectIntoAgents: false }, providers };
 }
@@ -323,7 +337,7 @@ describe("ProvidersSection", () => {
     expect(sheet?.getAttribute("data-provider")).toBe("codex");
   });
 
-  it("toggles the provider enabled flag through patchConfig when the switch is pressed", () => {
+  it("toggles the provider enabled flag through patchConfig when the switch is pressed", async () => {
     snapshotState.entries = [claudeEntry];
     configState.config = makeConfig();
 
@@ -334,7 +348,7 @@ describe("ProvidersSection", () => {
     expect(switchEl).not.toBeNull();
     expect(switchEl?.getAttribute("aria-checked")).toBe("true");
 
-    act(() => {
+    await act(async () => {
       switchEl?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
     });
 
@@ -343,5 +357,50 @@ describe("ProvidersSection", () => {
       providers: { claude: { enabled: false } },
     });
     expect(container?.querySelector('[data-testid="provider-diagnostic-sheet"]')).toBeNull();
+  });
+
+  it("toggles a provider yolo default mode through patchConfig", async () => {
+    snapshotState.entries = [codexEntry];
+    configState.config = makeConfig();
+
+    render();
+
+    const yoloSwitch = container?.querySelector<HTMLElement>(
+      '[data-testid="provider-yolo-switch-codex"]',
+    );
+    expect(yoloSwitch).not.toBeNull();
+    expect(yoloSwitch?.getAttribute("aria-checked")).toBe("false");
+
+    await act(async () => {
+      yoloSwitch?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(patchConfigMock).toHaveBeenCalledTimes(1);
+    expect(patchConfigMock).toHaveBeenCalledWith({
+      providers: { codex: { defaultModeId: "full-access" } },
+    });
+    expect(container?.querySelector('[data-testid="provider-diagnostic-sheet"]')).toBeNull();
+  });
+
+  it("clears a provider yolo default mode through patchConfig", async () => {
+    snapshotState.entries = [{ ...codexEntry, defaultModeId: "full-access" }];
+    configState.config = makeConfig({ codex: { defaultModeId: "full-access" } });
+
+    render();
+
+    const yoloSwitch = container?.querySelector<HTMLElement>(
+      '[data-testid="provider-yolo-switch-codex"]',
+    );
+    expect(yoloSwitch).not.toBeNull();
+    expect(yoloSwitch?.getAttribute("aria-checked")).toBe("true");
+
+    await act(async () => {
+      yoloSwitch?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(patchConfigMock).toHaveBeenCalledTimes(1);
+    expect(patchConfigMock).toHaveBeenCalledWith({
+      providers: { codex: { defaultModeId: null } },
+    });
   });
 });

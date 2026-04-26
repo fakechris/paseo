@@ -154,6 +154,10 @@ function applyOverrideToDefinition(
     ...definition,
     label: override.label ?? definition.label,
     description: override.description ?? definition.description,
+    defaultModeId:
+      typeof override.defaultModeId === "string"
+        ? override.defaultModeId
+        : definition.defaultModeId,
   };
 }
 
@@ -171,6 +175,10 @@ function createDerivedDefinition(
     id: providerId,
     label: override.label,
     description: override.description ?? baseDefinition.description,
+    defaultModeId:
+      typeof override.defaultModeId === "string"
+        ? override.defaultModeId
+        : baseDefinition.defaultModeId,
   };
 }
 

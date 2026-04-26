@@ -484,6 +484,34 @@ test("enabled: false keeps provider metadata in registry", () => {
   expect(registry.codex.enabled).toBe(true);
 });
 
+test("built-in override applies default mode", () => {
+  const registry = buildProviderRegistry(logger, {
+    providerOverrides: {
+      codex: {
+        defaultModeId: "full-access",
+      },
+    },
+  });
+
+  expect(registry.codex.defaultModeId).toBe("full-access");
+});
+
+test("derived provider inherits base default mode override", () => {
+  const registry = buildProviderRegistry(logger, {
+    providerOverrides: {
+      claude: {
+        defaultModeId: "bypassPermissions",
+      },
+      zai: {
+        extends: "claude",
+        label: "ZAI",
+      },
+    },
+  });
+
+  expect(registry.zai.defaultModeId).toBe("bypassPermissions");
+});
+
 test("enabled: false still produces a client (enabled gate is enforced elsewhere)", () => {
   const clients = createAllClients(logger, {
     providerOverrides: {

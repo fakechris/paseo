@@ -20,6 +20,7 @@ describe("applyMutableProviderConfigToOverrides", () => {
         {
           gemini: { enabled: false },
           claude: {
+            defaultModeId: "bypassPermissions",
             additionalModels: [
               {
                 id: "claude-custom",
@@ -37,6 +38,7 @@ describe("applyMutableProviderConfigToOverrides", () => {
         enabled: false,
       },
       claude: {
+        defaultModeId: "bypassPermissions",
         additionalModels: [
           {
             id: "claude-custom",
@@ -135,6 +137,60 @@ describe("DaemonConfigStore", () => {
           label: "claude-custom",
         },
       ],
+    });
+  });
+
+  test("patch persists provider default mode into config.json", () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
+    tempDirs.push(paseoHome);
+
+    const store = new DaemonConfigStore(
+      paseoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        providers: {},
+      },
+      undefined,
+    );
+
+    store.patch({
+      providers: {
+        codex: {
+          defaultModeId: "full-access",
+        },
+      },
+    });
+
+    const persisted = loadPersistedConfig(paseoHome);
+    expect(persisted.agents?.providers?.codex).toEqual({
+      defaultModeId: "full-access",
+    });
+  });
+
+  test("patch persists null provider default mode to clear the override", () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
+    tempDirs.push(paseoHome);
+
+    const store = new DaemonConfigStore(
+      paseoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        providers: { codex: { defaultModeId: "full-access" } },
+      },
+      undefined,
+    );
+
+    store.patch({
+      providers: {
+        codex: {
+          defaultModeId: null,
+        },
+      },
+    });
+
+    const persisted = loadPersistedConfig(paseoHome);
+    expect(persisted.agents?.providers?.codex).toEqual({
+      defaultModeId: null,
     });
   });
 });

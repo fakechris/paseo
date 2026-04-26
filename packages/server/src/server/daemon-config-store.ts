@@ -74,6 +74,9 @@ export function applyMutableProviderConfigToOverrides(
     if (providerConfig.enabled !== undefined) {
       nextOverrides[providerId].enabled = providerConfig.enabled;
     }
+    if (providerConfig.defaultModeId !== undefined) {
+      nextOverrides[providerId].defaultModeId = providerConfig.defaultModeId;
+    }
     if (providerConfig.additionalModels !== undefined) {
       nextOverrides[providerId].additionalModels = providerConfig.additionalModels;
     }

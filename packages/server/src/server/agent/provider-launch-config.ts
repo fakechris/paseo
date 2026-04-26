@@ -70,6 +70,7 @@ export const ProviderOverrideSchema = z
     additionalModels: z.array(ProviderProfileModelSchema).optional(),
     disallowedTools: z.array(z.string()).optional(),
     enabled: z.boolean().optional(),
+    defaultModeId: z.string().min(1).nullable().optional(),
     order: z.number().optional(),
   })
   .strict();
