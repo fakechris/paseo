@@ -17,6 +17,7 @@ import { lookup } from "mime-types";
 import { parseDuration } from "../../utils/duration.js";
 import { collectMultiple } from "../../utils/command-options.js";
 import { resolveProviderAndModel } from "../../utils/provider-model.js";
+import { resolveYoloModeFromProviderSnapshot } from "./yolo-mode.js";
 
 export { resolveProviderAndModel } from "../../utils/provider-model.js";
 
@@ -37,6 +38,7 @@ export function addRunOptions(cmd: Command): Command {
     )
     .option("--thinking <id>", "Thinking option ID to use for this run")
     .option("--mode <mode>", "Provider-specific mode (e.g., plan, default, bypass)")
+    .option("--yolo", "Use the provider's most permissive available mode")
     .option("--worktree <name>", "Create agent in a new git worktree")
     .option("--base <branch>", "Base branch for worktree (default: current branch)")
     .option(
@@ -91,6 +93,7 @@ export interface AgentRunOptions extends CommandOptions {
   model?: string;
   thinking?: string;
   mode?: string;
+  yolo?: boolean;
   worktree?: string;
   base?: string;
   image?: string[];
@@ -276,6 +279,14 @@ function validateRunOptions(prompt: string, options: AgentRunOptions, outputSche
       details: "Structured output requires waiting for the agent to finish",
     } satisfies CommandError;
   }
+
+  if (options.yolo && options.mode) {
+    throw {
+      code: "INVALID_OPTIONS",
+      message: "--yolo cannot be used with --mode",
+      details: "Use either --yolo or a provider-specific --mode value, not both",
+    } satisfies CommandError;
+  }
 }
 
 function parseWaitTimeoutOption(waitTimeout: string | undefined): number {
@@ -353,6 +364,36 @@ async function connectToDaemonOrThrow(
   }
 }
 
+async function resolveYoloModeOrThrow(options: {
+  client: ConnectedDaemonClient;
+  provider: string;
+  cwd: string;
+}): Promise<string> {
+  const snapshot = await options.client.getProvidersSnapshot({ cwd: options.cwd });
+  const cachedMode = resolveYoloModeFromProviderSnapshot(options.provider, snapshot.entries);
+  if (cachedMode) {
+    return cachedMode;
+  }
+
+  await options.client.refreshProvidersSnapshot({
+    cwd: options.cwd,
+    providers: [options.provider],
+  });
+  const refreshedSnapshot = await options.client.getProvidersSnapshot({ cwd: options.cwd });
+  const refreshedMode = resolveYoloModeFromProviderSnapshot(
+    options.provider,
+    refreshedSnapshot.entries,
+  );
+  if (refreshedMode) {
+    return refreshedMode;
+  }
+
+  throw {
+    code: "INVALID_OPTIONS",
+    message: `Provider ${options.provider} does not expose a yolo/no-prompt mode`,
+  } satisfies CommandError;
+}
+
 export async function runRunCommand(
   prompt: string,
   options: AgentRunOptions,
@@ -372,6 +413,13 @@ export async function runRunCommand(
   try {
     // Resolve working directory
     const cwd = options.cwd ?? process.cwd();
+    const modeId = options.yolo
+      ? await resolveYoloModeOrThrow({
+          client,
+          provider: resolvedProviderModel.provider,
+          cwd,
+        })
+      : options.mode;
     const thinkingOptionId = options.thinking?.trim();
     if (options.thinking !== undefined && !thinkingOptionId) {
       const error: CommandError = {
@@ -404,7 +452,7 @@ export async function runRunCommand(
             provider: resolvedProviderModel.provider,
             cwd,
             title: resolvedTitle,
-            modeId: options.mode,
+            modeId,
             model: resolvedProviderModel.model,
             thinkingOptionId,
             initialPrompt: structuredPrompt,
@@ -474,7 +522,7 @@ export async function runRunCommand(
       provider: resolvedProviderModel.provider,
       cwd,
       title: resolvedTitle,
-      modeId: options.mode,
+      modeId,
       model: resolvedProviderModel.model,
       thinkingOptionId,
       initialPrompt: prompt,
