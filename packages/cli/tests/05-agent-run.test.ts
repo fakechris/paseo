@@ -17,6 +17,7 @@
  * - run --name flag is accepted
  * - run --provider flag is accepted
  * - run --mode flag is accepted
+ * - run --yolo flag is accepted
  * - run --cwd flag is accepted
  */
 
@@ -57,6 +58,7 @@ try {
     assert(result.stdout.includes("--title"), "help should mention --title option");
     assert(result.stdout.includes("--provider"), "help should mention --provider option");
     assert(result.stdout.includes("--mode"), "help should mention --mode option");
+    assert(result.stdout.includes("--yolo"), "help should mention --yolo option");
     assert(result.stdout.includes("--cwd"), "help should mention --cwd option");
     assert(result.stdout.includes("--output-schema"), "help should mention --output-schema option");
     assert(result.stdout.includes("--host"), "help should mention --host option");
@@ -85,7 +87,7 @@ try {
   {
     console.log("Test 3: run handles daemon not running");
     const result =
-      await $`PASEO_HOST=localhost:${port} PASEO_HOME=${paseoHome} npx paseo run "test prompt"`.nothrow();
+      await $`PASEO_HOST=localhost:${port} PASEO_HOME=${paseoHome} npx paseo run --provider codex "test prompt"`.nothrow();
     // Should fail because daemon not running
     assert.notStrictEqual(result.exitCode, 0, "should fail when daemon not running");
     const output = result.stdout + result.stderr;
@@ -163,6 +165,17 @@ try {
     console.log("✓ run --cwd flag is accepted\n");
   }
 
+  // Test 8b: run --yolo flag is accepted
+  {
+    console.log("Test 8b: run --yolo flag is accepted");
+    const result =
+      await $`PASEO_HOST=localhost:${port} PASEO_HOME=${paseoHome} npx paseo run --yolo "test prompt"`.nothrow();
+    const output = result.stdout + result.stderr;
+    assert(!output.includes("unknown option"), "should accept --yolo flag");
+    assert(!output.includes("error: option"), "should not have option parsing error");
+    console.log("✓ run --yolo flag is accepted\n");
+  }
+
   // Test 9: run --output-schema flag is accepted
   {
     console.log("Test 9: run --output-schema flag is accepted");
@@ -222,6 +235,20 @@ try {
       "should explain conflicting model inputs",
     );
     console.log("✓ conflicting provider/model syntax is rejected\n");
+  }
+
+  // Test 12c: run --yolo cannot be combined with --mode
+  {
+    console.log("Test 12c: run --yolo cannot be combined with --mode");
+    const result =
+      await $`PASEO_HOST=localhost:${port} PASEO_HOME=${paseoHome} npx paseo run --yolo --mode full-access "test prompt"`.nothrow();
+    assert.notStrictEqual(result.exitCode, 0, "should fail with --yolo and --mode");
+    const output = result.stdout + result.stderr;
+    assert(
+      output.includes("--yolo cannot be used with --mode"),
+      "error should explain yolo/mode incompatibility",
+    );
+    console.log("✓ run --yolo cannot be combined with --mode\n");
   }
 
   // Test 13: paseo --help shows run command

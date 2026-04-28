@@ -24,6 +24,18 @@ interface ProviderStatus {
   modelCount: number | null;
 }
 
+const YOLO_MODE_PRIORITY = [
+  "full-access",
+  "bypassPermissions",
+  "https://agentclientprotocol.com/protocol/session-modes#autopilot",
+  "build",
+] as const;
+
+function resolveYoloMode(entry: ProviderEntry): string | null {
+  const modeIds = new Set((entry.modes ?? []).map((mode) => mode.id));
+  return YOLO_MODE_PRIORITY.find((modeId) => modeIds.has(modeId)) ?? null;
+}
+
 function getProviderStatus(status: string, enabled: boolean, modelCount: number): ProviderStatus {
   if (!enabled) return { tone: "muted", label: "Disabled", modelCount: null };
   if (status === "loading") return { tone: "loading", label: "Loading", modelCount: null };
@@ -44,8 +56,11 @@ interface ProviderRowProps {
   enabled: boolean;
   isToggling: boolean;
   isFirst: boolean;
+  yoloModeId: string | null;
+  yoloDefaultEnabled: boolean;
   onPress: (providerId: string) => void;
   onToggleEnabled: (providerId: string, enabled: boolean) => void;
+  onToggleYoloDefault: (providerId: string, modeId: string, enabled: boolean) => void;
 }
 
 function ProviderRow({
@@ -54,8 +69,11 @@ function ProviderRow({
   enabled,
   isToggling,
   isFirst,
+  yoloModeId,
+  yoloDefaultEnabled,
   onPress,
   onToggleEnabled,
+  onToggleYoloDefault,
 }: ProviderRowProps) {
   const { theme } = useUnistyles();
   const ProviderIcon = getProviderIcon(def.id);
@@ -77,6 +95,13 @@ function ProviderRow({
       onToggleEnabled(def.id, value);
     },
     [def.id, onToggleEnabled],
+  );
+  const handleToggleYoloDefault = useCallback(
+    (value: boolean) => {
+      if (!yoloModeId) return;
+      onToggleYoloDefault(def.id, yoloModeId, value);
+    },
+    [def.id, onToggleYoloDefault, yoloModeId],
   );
   const rowStyle = useCallback(
     ({ pressed, hovered }: PressableStateCallbackType & { hovered?: boolean }) => [
@@ -116,6 +141,19 @@ function ProviderRow({
                 <Text style={styles.errorText} numberOfLines={3}>
                   {providerError}
                 </Text>
+              ) : null}
+              {enabled && yoloModeId ? (
+                <View style={styles.defaultModeRow}>
+                  <Text style={styles.defaultModeLabel}>YOLO by default</Text>
+                  <Switch
+                    value={yoloDefaultEnabled}
+                    onValueChange={handleToggleYoloDefault}
+                    disabled={isToggling}
+                    size="sm"
+                    accessibilityLabel={`Use ${def.label} YOLO mode by default`}
+                    testID={`provider-yolo-switch-${def.id}`}
+                  />
+                </View>
               ) : null}
             </View>
           </View>
@@ -180,7 +218,7 @@ export function ProvidersSection({ serverId }: ProvidersSectionProps) {
   const { theme } = useUnistyles();
   const isConnected = useHostRuntimeIsConnected(serverId);
   const { entries, isLoading, isRefreshing, refresh } = useProvidersSnapshot(serverId);
-  const { patchConfig } = useDaemonConfig(serverId);
+  const { config, patchConfig } = useDaemonConfig(serverId);
   const [diagnosticProvider, setDiagnosticProvider] = useState<string | null>(null);
   const [pendingProviderId, setPendingProviderId] = useState<string | null>(null);
 
@@ -199,6 +237,28 @@ export function ProvidersSection({ serverId }: ProvidersSectionProps) {
       setPendingProviderId(providerId);
       try {
         await patchConfig({ providers: { [providerId]: { enabled } } });
+      } catch (error) {
+        Alert.alert(
+          "Unable to update provider",
+          error instanceof Error ? error.message : String(error),
+        );
+      } finally {
+        setPendingProviderId((current) => (current === providerId ? null : current));
+      }
+    },
+    [patchConfig],
+  );
+  const handleToggleYoloDefault = useCallback(
+    async (providerId: string, modeId: string, enabled: boolean) => {
+      setPendingProviderId(providerId);
+      try {
+        await patchConfig({
+          providers: {
+            [providerId]: {
+              defaultModeId: enabled ? modeId : null,
+            },
+          },
+        });
       } catch (error) {
         Alert.alert(
           "Unable to update provider",
@@ -264,6 +324,13 @@ export function ProvidersSection({ serverId }: ProvidersSectionProps) {
             {providerDefinitions.map((def, index) => {
               const entry = entries?.find((candidate) => candidate.provider === def.id);
               if (!entry) return null;
+              const yoloModeId = resolveYoloMode(entry);
+              const providerConfig = config?.providers?.[def.id];
+              const effectiveDefaultModeId =
+                providerConfig &&
+                Object.prototype.hasOwnProperty.call(providerConfig, "defaultModeId")
+                  ? providerConfig.defaultModeId
+                  : entry.defaultModeId;
               return (
                 <ProviderRow
                   key={def.id}
@@ -272,8 +339,13 @@ export function ProvidersSection({ serverId }: ProvidersSectionProps) {
                   enabled={entry.enabled ?? true}
                   isToggling={pendingProviderId === def.id}
                   isFirst={index === 0}
+                  yoloModeId={yoloModeId}
+                  yoloDefaultEnabled={
+                    typeof yoloModeId === "string" && effectiveDefaultModeId === yoloModeId
+                  }
                   onPress={setDiagnosticProvider}
                   onToggleEnabled={handleToggleEnabled}
+                  onToggleYoloDefault={handleToggleYoloDefault}
                 />
               );
             })}
@@ -352,6 +424,17 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.palette.red[300],
     fontSize: theme.fontSize.xs,
     marginTop: theme.spacing[1],
+  },
+  defaultModeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: theme.spacing[2],
+    marginTop: theme.spacing[2],
+  },
+  defaultModeLabel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
   },
 }));
 

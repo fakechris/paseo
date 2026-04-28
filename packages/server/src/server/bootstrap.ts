@@ -230,6 +230,9 @@ export async function createPaseoDaemon(
           providerId,
           {
             ...(override.enabled !== undefined ? { enabled: override.enabled } : {}),
+            ...(override.defaultModeId !== undefined
+              ? { defaultModeId: override.defaultModeId }
+              : {}),
             ...(override.additionalModels ? { additionalModels: override.additionalModels } : {}),
           },
         ]),

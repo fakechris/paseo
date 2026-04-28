@@ -115,6 +115,7 @@ interface AgentManagerRescueTimeouts {
 
 interface ProviderEnabledFlag {
   enabled: boolean;
+  defaultModeId?: string | null;
 }
 type ProviderEnabledMap = Partial<Record<AgentProvider, ProviderEnabledFlag>>;
 type ProviderClientMap = Partial<Record<AgentProvider, AgentClient>>;
@@ -394,7 +395,7 @@ function buildExplicitTimelineSeedForRegister(
 
 export class AgentManager {
   private readonly clients = new Map<AgentProvider, AgentClient>();
-  private readonly providerEnabled = new Map<AgentProvider, boolean>();
+  private readonly providerEnabled = new Map<AgentProvider, ProviderEnabledFlag>();
   private readonly agents = new Map<string, LiveManagedAgent>();
   private readonly timelineStore = new InMemoryAgentTimelineStore();
   private readonly agentsAwaitingInitialSnapshotPersist = new Set<string>();
@@ -449,7 +450,13 @@ export class AgentManager {
   }): void {
     for (const [provider, definition] of Object.entries(input.providerDefinitions)) {
       if (definition) {
-        this.providerEnabled.set(provider, definition.enabled);
+        const next: ProviderEnabledFlag = {
+          enabled: definition.enabled,
+        };
+        if (Object.prototype.hasOwnProperty.call(definition, "defaultModeId")) {
+          next.defaultModeId = definition.defaultModeId;
+        }
+        this.providerEnabled.set(provider, next);
       }
     }
     for (const [provider, client] of Object.entries(input.clients)) {
@@ -3082,15 +3089,27 @@ export class AgentManager {
     }
 
     if (!normalized.modeId) {
-      try {
-        normalized.modeId =
-          getAgentProviderDefinition(normalized.provider).defaultModeId ?? undefined;
-      } catch {
-        // Unknown provider
-      }
+      normalized.modeId = this.resolveProviderDefaultModeId(normalized.provider);
     }
 
     return normalized;
+  }
+
+  private resolveProviderDefaultModeId(provider: AgentProvider): string | undefined {
+    const providerConfig = this.providerEnabled.get(provider);
+    if (
+      providerConfig &&
+      Object.prototype.hasOwnProperty.call(providerConfig, "defaultModeId") &&
+      providerConfig.defaultModeId !== undefined
+    ) {
+      return providerConfig.defaultModeId ?? undefined;
+    }
+
+    try {
+      return getAgentProviderDefinition(provider).defaultModeId ?? undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   private buildLaunchContext(agentId: string): AgentLaunchContext {
@@ -3133,7 +3152,7 @@ export class AgentManager {
   }
 
   private requireEnabledProvider(provider: AgentProvider): void {
-    if (this.providerEnabled.get(provider) === false) {
+    if (this.providerEnabled.get(provider)?.enabled === false) {
       throw new Error(`Provider '${provider}' is disabled`);
     }
   }
