@@ -370,9 +370,19 @@ async function resolveYoloModeOrThrow(options: {
   cwd: string;
 }): Promise<string> {
   const snapshot = await options.client.getProvidersSnapshot({ cwd: options.cwd });
-  const cachedMode = resolveYoloModeFromProviderSnapshot(options.provider, snapshot.entries);
+  const providerEntry = snapshot.entries.find((entry) => entry.provider === options.provider);
+  const cachedMode = resolveYoloModeFromProviderSnapshot({
+    provider: options.provider,
+    entries: snapshot.entries,
+  });
   if (cachedMode) {
     return cachedMode;
+  }
+  if (providerEntry?.modes && providerEntry.modes.length > 0) {
+    throw {
+      code: "INVALID_OPTIONS",
+      message: `Provider ${options.provider} does not expose a yolo/no-prompt mode`,
+    } satisfies CommandError;
   }
 
   await options.client.refreshProvidersSnapshot({
@@ -380,10 +390,10 @@ async function resolveYoloModeOrThrow(options: {
     providers: [options.provider],
   });
   const refreshedSnapshot = await options.client.getProvidersSnapshot({ cwd: options.cwd });
-  const refreshedMode = resolveYoloModeFromProviderSnapshot(
-    options.provider,
-    refreshedSnapshot.entries,
-  );
+  const refreshedMode = resolveYoloModeFromProviderSnapshot({
+    provider: options.provider,
+    entries: refreshedSnapshot.entries,
+  });
   if (refreshedMode) {
     return refreshedMode;
   }

@@ -450,10 +450,13 @@ export class AgentManager {
   }): void {
     for (const [provider, definition] of Object.entries(input.providerDefinitions)) {
       if (definition) {
-        this.providerEnabled.set(provider, {
+        const next: ProviderEnabledFlag = {
           enabled: definition.enabled,
-          defaultModeId: definition.defaultModeId,
-        });
+        };
+        if (Object.prototype.hasOwnProperty.call(definition, "defaultModeId")) {
+          next.defaultModeId = definition.defaultModeId;
+        }
+        this.providerEnabled.set(provider, next);
       }
     }
     for (const [provider, client] of Object.entries(input.clients)) {
@@ -3093,9 +3096,13 @@ export class AgentManager {
   }
 
   private resolveProviderDefaultModeId(provider: AgentProvider): string | undefined {
-    const configuredDefaultModeId = this.providerEnabled.get(provider)?.defaultModeId;
-    if (configuredDefaultModeId) {
-      return configuredDefaultModeId;
+    const providerConfig = this.providerEnabled.get(provider);
+    if (
+      providerConfig &&
+      Object.prototype.hasOwnProperty.call(providerConfig, "defaultModeId") &&
+      providerConfig.defaultModeId !== undefined
+    ) {
+      return providerConfig.defaultModeId ?? undefined;
     }
 
     try {

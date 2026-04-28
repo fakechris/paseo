@@ -403,4 +403,17 @@ describe("ProvidersSection", () => {
       providers: { codex: { defaultModeId: null } },
     });
   });
+
+  it("honors an explicit null provider default mode in config", () => {
+    snapshotState.entries = [{ ...codexEntry, defaultModeId: "full-access" }];
+    configState.config = makeConfig({ codex: { defaultModeId: null } });
+
+    render();
+
+    const yoloSwitch = container?.querySelector<HTMLElement>(
+      '[data-testid="provider-yolo-switch-codex"]',
+    );
+    expect(yoloSwitch).not.toBeNull();
+    expect(yoloSwitch?.getAttribute("aria-checked")).toBe("false");
+  });
 });

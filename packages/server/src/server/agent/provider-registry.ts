@@ -154,10 +154,9 @@ function applyOverrideToDefinition(
     ...definition,
     label: override.label ?? definition.label,
     description: override.description ?? definition.description,
-    defaultModeId:
-      typeof override.defaultModeId === "string"
-        ? override.defaultModeId
-        : definition.defaultModeId,
+    defaultModeId: Object.prototype.hasOwnProperty.call(override, "defaultModeId")
+      ? (override.defaultModeId ?? null)
+      : definition.defaultModeId,
   };
 }
 
@@ -175,10 +174,9 @@ function createDerivedDefinition(
     id: providerId,
     label: override.label,
     description: override.description ?? baseDefinition.description,
-    defaultModeId:
-      typeof override.defaultModeId === "string"
-        ? override.defaultModeId
-        : baseDefinition.defaultModeId,
+    defaultModeId: Object.prototype.hasOwnProperty.call(override, "defaultModeId")
+      ? (override.defaultModeId ?? null)
+      : baseDefinition.defaultModeId,
   };
 }
 

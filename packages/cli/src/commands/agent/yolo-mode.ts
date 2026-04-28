@@ -1,11 +1,7 @@
-interface ProviderModeLike {
-  id: string;
-}
+import type { AgentMode, ProviderSnapshotEntry } from "@getpaseo/server";
 
-interface ProviderSnapshotEntryLike {
-  provider: string;
-  modes?: ProviderModeLike[];
-}
+type ProviderModeLike = Pick<AgentMode, "id">;
+type ProviderSnapshotEntryLike = Pick<ProviderSnapshotEntry, "provider" | "modes">;
 
 const YOLO_MODE_PRIORITY = [
   "full-access",
@@ -22,10 +18,10 @@ export function resolveYoloModeFromModes(modes: ProviderModeLike[] | undefined):
   return YOLO_MODE_PRIORITY.find((modeId) => modeIds.has(modeId)) ?? null;
 }
 
-export function resolveYoloModeFromProviderSnapshot(
-  provider: string,
-  entries: ProviderSnapshotEntryLike[],
-): string | null {
-  const entry = entries.find((item) => item.provider === provider);
+export function resolveYoloModeFromProviderSnapshot(options: {
+  provider: string;
+  entries: ProviderSnapshotEntryLike[];
+}): string | null {
+  const entry = options.entries.find((item) => item.provider === options.provider);
   return resolveYoloModeFromModes(entry?.modes);
 }

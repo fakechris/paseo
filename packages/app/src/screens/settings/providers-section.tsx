@@ -325,10 +325,11 @@ export function ProvidersSection({ serverId }: ProvidersSectionProps) {
               const entry = entries?.find((candidate) => candidate.provider === def.id);
               if (!entry) return null;
               const yoloModeId = resolveYoloMode(entry);
-              const configuredDefaultModeId = config?.providers?.[def.id]?.defaultModeId;
+              const providerConfig = config?.providers?.[def.id];
               const effectiveDefaultModeId =
-                typeof configuredDefaultModeId === "string"
-                  ? configuredDefaultModeId
+                providerConfig &&
+                Object.prototype.hasOwnProperty.call(providerConfig, "defaultModeId")
+                  ? providerConfig.defaultModeId
                   : entry.defaultModeId;
               return (
                 <ProviderRow
